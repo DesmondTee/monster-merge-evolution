@@ -4,6 +4,7 @@ import { createMonsterTextures } from '../art/createMonsterTextures'
 import { evolutionEffect } from '../art/evolutionEffect'
 import { DROP_LEVELS, MONSTERS } from '../monsters'
 import { MergeQueue } from '../merging'
+import { monsterTexture, rollRare } from '../variants'
 import { Session, OverflowTracker, OVERFLOW_MS, type SessionView } from '../session'
 import { GameSound } from '../sound'
 import { CONTAINER, DANGER_Y, DROP_Y, GAME, MAX_MONSTERS, clampDropX } from '../rules'
@@ -14,6 +15,10 @@ export class GameScene extends Phaser.Scene {
   private nextLevel = 0
   private preview!: Phaser.GameObjects.Image
   private guide!: Phaser.GameObjects.Graphics
+  private sparkles!: Phaser.GameObjects.Graphics
+  private rareBodies = new Set<number>()
+  private sparkleTime = 0
+  private reducedMotion = false
   private status!: Phaser.GameObjects.Text
   private session = new Session()
   private overflow = new OverflowTracker()
@@ -37,6 +42,9 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.monsters.clear()
+    this.rareBodies.clear()
+    this.sparkleTime = 0
+    this.reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
     this.merges = new MergeQueue()
     this.score = 0
     this.onScore(0)
@@ -52,6 +60,7 @@ export class GameScene extends Phaser.Scene {
     this.drawHatchery()
     this.createWalls()
     this.guide = this.add.graphics()
+    this.sparkles = this.add.graphics().setDepth(2)
     this.preview = this.add.image(GAME.width / 2, DROP_Y, MONSTERS[this.nextLevel]!.key).setAlpha(0.85)
     this.status = this.add.text(180, 620, 'READY FOR YOUR FIRST DROP', { fontFamily: 'monospace', fontSize: '10px', color: '#a5c5ba' }).setOrigin(0.5)
     this.aim(180)
@@ -93,6 +102,7 @@ export class GameScene extends Phaser.Scene {
     this.game.events.off('blur', this.onBlur, this)
     this.tones.destroy()
     this.monsters.clear()
+    this.rareBodies.clear()
     this.overflow.clear()
     this.merges = new MergeQueue()
   }
@@ -160,7 +170,7 @@ export class GameScene extends Phaser.Scene {
     if (pointer.x < CONTAINER.left || pointer.x > CONTAINER.right || pointer.y < 0 || pointer.y > CONTAINER.floor || this.monsters.size >= MAX_MONSTERS || !this.session.drop()) return
     const monster = MONSTERS[this.nextLevel]!
     const x = clampDropX(pointer.x, monster.radius)
-    const id = this.spawnMonster(x, DROP_Y, this.nextLevel)
+    const id = this.spawnMonster(x, DROP_Y, this.nextLevel, 'drop', rollRare())
     this.overflow.add(id)
     this.tones.play('drop')
     this.nextLevel = this.queuedLevel
@@ -171,15 +181,16 @@ export class GameScene extends Phaser.Scene {
     this.updateStatus()
   }
 
-  private spawnMonster(x: number, y: number, level: number, source: 'drop' | 'merge' = 'drop'): number {
+  private spawnMonster(x: number, y: number, level: number, source: 'drop' | 'merge' = 'drop', rare = false): number {
     const monster = MONSTERS[level]!
-    const image = this.matter.add.image(clampDropX(x, monster.radius), Math.min(y, CONTAINER.floor - monster.radius), monster.key)
+    const image = this.matter.add.image(clampDropX(x, monster.radius), Math.min(y, CONTAINER.floor - monster.radius), monsterTexture(level, rare))
     image.setCircle(24).setDisplaySize(monster.radius * 2, monster.radius * 2)
       .setBounce(0.35).setFriction(0.45).setFrictionAir(0.005).setName(monster.key)
     const id = (image.body as MatterJS.BodyType).id
     this.monsters.set(id, image)
-    this.merges.register(id, level)
-    this.bridge.emit('appeared', { level, source })
+    if (rare) this.rareBodies.add(id)
+    this.merges.register(id, level, rare)
+    this.bridge.emit('appeared', { level, source, rare })
     return id
   }
 
@@ -198,11 +209,13 @@ export class GameScene extends Phaser.Scene {
       const y = (first.y + second.y) / 2
       this.monsters.delete(plan.first)
       this.monsters.delete(plan.second)
+      this.rareBodies.delete(plan.first)
+      this.rareBodies.delete(plan.second)
       this.overflow.remove(plan.first)
       this.overflow.remove(plan.second)
       first.destroy()
       second.destroy()
-      this.spawnMonster(x, y, plan.level, 'merge')
+      this.spawnMonster(x, y, plan.level, 'merge', plan.rare)
       this.score += plan.points
       this.onScore(this.score)
       this.tones.play('merge')
@@ -218,6 +231,17 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (this.session.state !== 'playing') return
+    this.sparkleTime += delta
+    // One bounded graphics layer follows rare bodies; no extra physics bodies or timers.
+    this.sparkles.clear().lineStyle(1, 0xffedb2, 0.65)
+    for (const id of this.rareBodies) {
+      const image = this.monsters.get(id)
+      if (!image?.active) continue
+      const phase = this.reducedMotion ? 0 : Math.floor(this.sparkleTime / 450 + id) % 4
+      const x = image.x + image.displayWidth * (phase < 2 ? 0.28 : -0.28)
+      const y = image.y + image.displayHeight * (phase % 2 ? 0.22 : -0.22)
+      this.sparkles.lineBetween(x - 3, y, x + 3, y).lineBetween(x, y - 3, x, y + 3)
+    }
     let overflowing = false
     for (const [id, image] of this.monsters) {
       const body = image.body as MatterJS.BodyType

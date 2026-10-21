@@ -1,6 +1,6 @@
 // A small, typed bridge shared by React and Phaser. Subscriptions own their cleanup.
 export interface GameEvents {
-  appeared: { level: number; source: 'drop' | 'merge' }
+  appeared: { level: number; source: 'drop' | 'merge'; rare: boolean }
   encyclopedia: boolean
 }
 

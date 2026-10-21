@@ -1,103 +1,99 @@
 # Monster Merge Evolution
 
-An original pixel-art monster merging puzzle game for HTML5 platforms. **Milestone 4** adds a persistent monster encyclopedia, first-appearance discoveries, original creature lore and elemental identities, discovery sparkles, and three collection achievements. All ten evolution levels keep their existing order, art, sizes, and gameplay balance.
+An original pixel-art monster merging puzzle game built with React, TypeScript, Phaser 3, its bundled Matter.js engine, and Vite. **Milestone 5** adds rare color variants, separate collection progress, richer procedural creature art, and first-time rare discovery notifications.
 
 ## Run locally
 
-Use **Node.js 24 LTS** (see `.nvmrc`) and npm.
+Use Node.js 24 LTS (see `.nvmrc`) and npm.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Move the mouse to aim and click inside the hatchery to drop. On touch screens, tap the desired horizontal position. Drops have a 300 ms cooldown and randomly select one of the first three levels. Two matching monsters merge at their midpoint into the next level. Newly evolved monsters can immediately join later collision steps for chain reactions. The final level stays in the hatchery without merging further.
-
-**Play Again** and **Reset hatchery** start a fresh session and clears the current score while keeping the best score. The best score is stored under `monster-merge-evolution.best-score` in LocalStorage. If storage is blocked or full, gameplay continues and the best score remains available for the current page session.
+Move to aim and click inside the hatchery to drop. On touch screens, tap the desired horizontal position. Drops have a 300 ms cooldown and randomly select one of the first three levels. Matching monsters merge into the next level, including normal/rare pairs. Newborns can join chain reactions on later physics steps. The final level does not merge further.
 
 ```sh
-npm run typecheck   # Strict TypeScript checks
-npm run lint        # Oxlint, React hooks and explicit-any rules
-npm test            # Vitest (single run)
-npm run test:watch  # Vitest (watch mode)
-npm run build       # Type checking and production bundle in dist/
-npm run preview     # Serve the production bundle locally
-npm run check       # All milestone checks
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run preview
+npm run check  # All four milestone checks
 ```
+
+## Rare variants
+
+Every accepted player drop independently has a **2%** chance of being rare. Change `RARE_DROP_CHANCE` in `src/game/variants.ts` for future balancing; `rollRare` also accepts a probability and random source for deterministic tests. Probabilities must be finite values between 0 and 1. Previews do not roll or unlock discoveries. Rarity is decided when a drop is accepted, so previews show the base palette.
+
+All ten creatures have original alternate body, shadow, and highlight palettes. Rare bodies have small gold cross sparkles that follow their positions. A single bounded graphics layer draws these without adding physics bodies, timers, or collision handlers. Sparkles freeze while paused; reduced-motion preferences at scene creation use stationary marks. Encyclopedia sprites have a subtle glow, a text badge, and a star indicator.
+
+**Inheritance: a merged creature is rare if either parent is rare.** Merges never reroll rarity. Both variants share their level, pixel geometry, collision radius, mass, friction, restitution, and points. Rarity remains separate from merge eligibility. There is no rare score multiplier.
 
 ## Evolution and points
 
-| Level | Creature | Color | Radius | Points for merging a pair |
+| Level | Creature | Element | Radius | Pair merge points |
 | --- | --- | --- | --- | --- |
-| 1 | Spriggle | Leaf green | 19 | 10 |
-| 2 | Cindlet | Peach orange | 23 | 20 |
-| 3 | Dewble | Sky blue | 27 | 40 |
-| 4 | Pebblit | Sandstone | 31 | 80 |
-| 5 | Mothbud | Orchid | 35 | 160 |
-| 6 | Voltusk | Golden yellow | 39 | 320 |
-| 7 | Coralune | Rose pink | 43 | 640 |
-| 8 | Glacifin | Turquoise | 47 | 1,280 |
-| 9 | Nocthorn | Violet | 51 | 2,560 |
-| 10 | Solossus | Warm amber | 56 | Terminal level |
+| 1 | Spriggle | Grove | 19 | 10 |
+| 2 | Cindlet | Ember | 23 | 20 |
+| 3 | Dewble | Water | 27 | 40 |
+| 4 | Pebblit | Stone | 31 | 80 |
+| 5 | Mothbud | Bloom | 35 | 160 |
+| 6 | Voltusk | Storm | 39 | 320 |
+| 7 | Coralune | Tide | 43 | 640 |
+| 8 | Glacifin | Frost | 47 | 1,280 |
+| 9 | Nocthorn | Dusk | 51 | 2,560 |
+| 10 | Solossus | Solar | 56 | Terminal |
 
-The game uses zero-based levels internally; points are `10 × 2^sourceLevel`. Original symmetric 24 × 24 pixel designs are generated from geometric silhouettes, appendages, highlights, and markings: shoots, ears, a water crest, crags, wings, zigzag horns, coral branches, fins, sweeping horns, and a crown with armor. Higher levels grow in size. No image downloads or external fonts are used.
+Internal levels are zero-based; points remain `10 × 2^sourceLevel`. The original 24 × 24 procedural art now gives higher levels split petal wings, forked lightning horns, branching coral antlers, crystal fins and a tail, sweeping dusk horns and wings, and a three-point armored crown. Silhouettes remain readable at small sizes. Names, elements, lore, ordering, and collision sizes are preserved. React and Phaser render the same pixel matrix and palette. No image downloads or external fonts are used.
 
-## Monster collection and evolution discovery
+## Encyclopedia and discoveries
 
-Open **Encyclopedia** from the game toolbar to browse all ten levels. Discovered creatures show their original pixel sprites; unknown creatures show anonymous locked silhouettes. Select a discovered creature to read its name, level, element, visual traits, and short original lore. The progress meter shows your collection out of ten. Close the journal with **Close** or Escape. The modal keeps keyboard focus inside it and blocks background input. Opening fixes the background page in place; closing restores its styles and scroll position. The journal scrolls independently, accounts for viewport safe areas, and keeps its Close button visible.
+Open **Encyclopedia** to see **Normal x/10** and **Rare x/10**. Use the variant toggle to browse each collection independently. Undiscovered variants have locked silhouettes; discovered rare entries show **✦ RARE DISCOVERED**. Selecting an unlocked entry shows its original name, level, element, traits, and lore. Finding a rare does not automatically unlock the normal palette.
 
-A creature unlocks only when its physics body actually spawns from a drop or merge. Generating textures and showing aiming/upcoming previews never unlock creatures. First appearances enqueue a five-second **New Monster Discovered!** notice with the sprite, name, and subtle CSS pixel sparkles. Notices occupy a reserved space above the playfield, wrapping within narrow screens without covering controls or moving the canvas when a discovery arrives. Dismiss with the close button. Notices wait while the journal is open, do not steal focus, and never add physics bodies or collision handlers. Reduced-motion preferences disable the sparkle animation.
+Achievements remain **First Evolution**, **Discover 5 Monsters**, and **Complete the Encyclopedia**. Species discovered in either palette count toward the existing thresholds; discovering both palettes never counts a species twice. Previously earned achievements are preserved.
 
-Achievements are **First Evolution** (an actual successful merge, including one into an already known creature), **Discover 5 Monsters**, and **Complete the Encyclopedia**. Each unlocks once and appears in the journal. Collection and achievement state survive game over, Play Again, Reset hatchery, and refresh. Scores and current physics bodies remain session-specific.
+Only actual physics spawns unlock entries. Each first appearance queues one five-second notice per species and palette; rare discoveries say **✦ Rare Monster Discovered!**. Collection state advances synchronously before React renders, preventing duplicate notices during rapid collision waves. Notices appear in a reserved space above the playfield, never covering pause, sound, journal, reset, or aiming controls. Each queued notice has its own identity and timer; opening the journal defers notices. Dismissal does not move focus into gameplay.
 
-Collection saves use LocalStorage key `monster-merge-evolution.collection` with `{ version: 1, discovered: string[], achievements: string[] }`. Stable creature keys preserve discoveries independently of display names. Loading validates the version and arrays, removes duplicate/unknown IDs, and derives collection achievements from valid discoveries. Malformed or unsupported saves fall back to an empty collection; the next actual discovery writes a fresh valid save. Failed reads/writes never interrupt gameplay; discoveries remain in memory when storage is unavailable. Saves are browser/origin-local, with no account or cloud sync. Previous milestones did not store discovery history, so existing players begin collecting with their next real appearance.
+The journal is a native modal with Close and Escape support, independent scrolling, safe-area-aware height, and background scroll restoration. It freezes Matter, effects, cooldown, and overflow timing. Closing restores the previous pause/game-over state; browser focus loss keeps the game paused until explicitly resumed.
 
-The typed `GameBridge` carries appearance events from Phaser to React and journal-open commands back to the scene. Subscriptions clean up on shutdown/unmount; duplicate discoveries retain object identity to avoid save writes, notifications, or React updates. The bridge remembers journal state if opened before Phaser finishes loading. An independent journal pause lock freezes Matter, tweens, cooldown, and overflow timing. Closing restores the prior playing/paused/game-over state; losing browser focus during the journal keeps the game paused until explicitly resumed.
+## Save compatibility
 
-- `src/game/collection.ts`: immutable discovery transitions, achievements, validated versioned persistence.
-- `src/game/events.ts`: typed React/Phaser bridge and subscription cleanup.
-- `src/components/Encyclopedia.tsx`: responsive journal, progress, details, and achievements.
-- `src/components/MonsterSprite.tsx`: cached sprites and silhouettes from the same procedural pixel matrix/palette as Phaser.
-- `src/components/DiscoveryNotice.tsx`: dismissible queued notice with cleaned-up timer.
+Collection LocalStorage key: `monster-merge-evolution.collection`.
 
-New automated coverage includes first-time/duplicate discoveries, collection counts, all achievement thresholds, merge-versus-drop semantics, versioned round trips, malformed/unsupported saves, unknown/duplicate IDs, denied/quota-exhausted storage, game-over/restart persistence, real scene appearance events, texture/preview exclusion, journal pause ownership, input/clock blocking, focus-loss behavior, pre-initialization journal state, and subscription cleanup. Browser smoke checks cover initial locks, real drop/merge discovery, details selection, achievement display, journal close/Escape, manual pause preservation, reset, and refresh persistence. Responsive browser checks include 320 × 568 portrait and 568 × 320 landscape, independent journal scrolling, background scroll locking, exact scroll restoration, and notification bounds without playfield overlap. Physical mobile-device checks remain pending.
+```ts
+{
+  version: 2,
+  discovered: string[],      // Normal stable creature keys
+  rareDiscovered: string[],  // Rare stable creature keys
+  achievements: string[]
+}
+```
+
+Version 1 saves migrate to version 2 by keeping normal discoveries and all recognized earned achievements and adding an empty rare collection. The migrated state is persisted when the app mounts. Loading removes duplicate and unknown IDs and derives missing threshold achievements from unique species. Missing, malformed, or partly invalid rare data is repaired independently, preserving valid normal data and achievements. Damaged achievement data does not erase discoveries. Completely unparseable or unsupported-version saves cannot be recovered and load an empty in-memory collection.
+
+Best scores retain their separate `monster-merge-evolution.best-score` key and are untouched by collection migration. Game over, Play Again, Reset hatchery, and refresh preserve both collections, achievements, and the best score. Current bodies, score, and pending notices are session-specific. Failed storage operations leave gameplay and in-memory progress working. Saves are browser/origin-local with no account or cloud sync.
 
 ## Architecture
 
-React 19 owns page UI, scores, warnings, pause/game-over overlays, restart, encyclopedia, discovery notifications, achievements, and mounting. Phaser 3 owns gameplay and its bundled Matter.js engine. The responsive hatchery keeps its **360 × 640** logical dimensions, `FIT` scaling, mouse/touch input, circular bodies, sleeping, walls, and floor.
+- `src/game/variants.ts`: configurable rare roll, ten original palettes, shared texture/palette selection.
+- `src/game/merging.ts`: level eligibility, unchanged points, collision reservations, OR inheritance.
+- `src/game/collection.ts`: immutable discoveries, achievements, version validation and migration.
+- `src/game/events.ts`: typed React/Phaser appearance and journal bridge.
+- `src/game/scenes/GameScene.ts`: spawning, Matter lifecycle, inheritance, body-following sparkles.
+- `src/game/art/`: deterministic pixel art, normal/rare textures, bounded evolution effects.
+- `src/components/`: responsive journal, shared sprites, queued notices, score and session controls.
 
-- `src/game/monsters.ts`: creature definitions and initial drop pool.
-- `src/game/merging.ts`: pure merge eligibility, score calculation, and collision reservation queue.
-- `src/game/scenes/GameScene.ts`: collision subscriptions, spawning, body lifecycle, and gameplay score callbacks.
-- `src/game/art/monsterPixels.ts` and `createMonsterTextures.ts`: deterministic original art and Phaser texture generation.
-- `src/game/art/evolutionEffect.ts`: eight pixel particles and floating points per merge; at most six simultaneous effects.
-- `src/game/session.ts`: overflow countdown, falling-drop eligibility, pause and drop cooldown.
-- `src/game/sound.ts`: optional short synthesized tones and audio cleanup.
-- `src/game/scoring.ts`: guarded best-score persistence and malformed-value recovery.
-- `src/components/ScoreBoard.tsx` and `GameCanvas.tsx`: React score display, storage, and Phaser lifecycle.
+React owns page UI and persistence; Phaser owns the 360 × 640 logical playfield and bundled Matter engine. Both collision-start and collision-active events reserve body pairs immediately. Merges remove consumed bodies and spawn newborns after physics updates, rejecting stale/shared contacts and duplicate scoring. Lazy loading, shutdown cleanup, and StrictMode-safe mounting prevent duplicate canvases or subscriptions. Physics work is bounded by a 100-body cap.
 
-Both `collisionstart` and `collisionactive` feed the same queue. A valid pair reserves both body IDs immediately, so reversed pairs and collisions that share a body cannot merge it twice. Matter bodies are removed and newborns added in `afterupdate`, after collision iteration and resolution. Consumed IDs are forgotten before newborns register, preventing stale contacts from awarding extra points. New bodies participate in following physics steps, including contacts with resting creatures.
+## Validation and limitations
 
-`GameCanvas` lazily imports Phaser and cancels pending initialization on unmount. Cleanup detaches the canvas and destroys Phaser, including during StrictMode and resets. Shutdown removes input and physics listeners and clears scene-owned registries. Effects are short-lived scene objects and tweens, without extra timers or animation loops.
+`npm run check` passes TypeScript, Oxlint, **85 Vitest tests**, and the production build. Coverage includes configurable probability boundaries, all four inheritance combinations at every eligible level, mixed-palette real Matter collisions and identical physical properties, chain inheritance, separate discoveries, duplicate notification eligibility during 2,000 bridge events, v1 migration, damaged rare fields, achievements, best-score isolation, restart/refresh persistence, and existing overflow, scoring, session and lifecycle behavior. A real Matter stress test merges 64 bodies through six generations and checks prolonged settling.
 
-## Validation and limits
+Browser smoke tests use an isolated test origin and deterministic rare spawns to check migrated normal progress, preserved achievements/best score, rare first-discovery notices, variant tabs, locked silhouettes, and reset/refresh behavior. Test fixtures are removed before commit. Physical mobile-device and audible speaker checks remain pending. Vite still reports the existing advisory for the lazy-loaded Phaser engine chunk exceeding 500 kB; production builds succeed. No active run or pending notification queue is restored after refresh.
 
-The 61 tests cover rules, artwork, scoring/storage recovery, merge reservations, and integration with Phaser's bundled Matter engine. New tests exercise three-second overflow detection, countdown clearing, falling-drop immunity, pause/resume timing, rapid taps, immediate tap positioning, bounded spawning, queue advancement, game-over input blocking, repeated scene shutdown/recreation, listener cleanup, and sound preference retention. A 64-body chain runs through six generations and 600 extra physics steps, checking finite positions and duplicate-free scoring/removal.
+## Public repository scope
 
-- Overflow uses the top of each body's circle. Player drops are ignored until they pass fully below the danger line or rest on a high pile (at least 350 ms old and 250 ms continuously moving slower than 1 Matter speed unit). Once eligible, bouncing cannot renew immunity. Evolved bodies are eligible immediately. The pile must stay above the line for three continuous seconds; clearing the line resets the timer.
-- Pause freezes physics, effects, drop cooldown and countdown. Losing browser focus also pauses; players explicitly resume. Game over freezes the simulation and rejects drops.
-- The upcoming creature appears beside the aiming preview and in the status text. Touch drops use pointer-down coordinates immediately, with a 300 ms cooldown and radius-aware containment, including larger evolved bodies near walls or the floor.
-- Sound uses short original square-wave tones. The sound setting survives restarts for the current page session. Restart destroys the old Phaser instance, detaches its canvas, and preserves the saved best score.
-- The 100-body cap bounds physics work; it blocks drops until a merge frees capacity. Overflow remains the loss condition.
-- Browser smoke checks verify rendered controls, pause/resume, reset and a single canvas after reset. Physical mobile-device and audible speaker testing remain pending; responsive CSS, touch scrolling prevention on the canvas, and 44 px control targets are included.
-- Phaser's separate lazy-loaded engine chunk exceeds Vite's 500 kB advisory threshold; the production build succeeds.
+All creature designs and palettes are original procedural artwork. No proprietary artwork, copyrighted characters, advertising SDKs, credentials, or commercial monetization code are included. Dependencies retain their respective licenses; no project license has been selected yet.
 
-## Public repository scope and workflow
-
-This repository contains game source, configuration, documentation, and the npm lockfile. It includes no proprietary artwork, copyrighted character designs, advertising SDKs, monetization integrations, credentials, or secrets. Dependencies retain their respective licenses; no project license has been selected yet.
-
-Implementation branch: `codex/monster-encyclopedia`. Target branch: `main`. See `docs/pull-request.md` for the milestone PR description. Do not merge directly into the default branch.
-
-## Future creature art direction
-
-A future art pass should give higher evolutions more distinctive body proportions and stronger silhouettes, including larger asymmetric appendages, horns, wings, and tails. Check designs at 24 × 24 pixels and as locked silhouettes; retain entirely original identities and review physics fit separately before changing collision sizes. Milestone 4 preserves the existing sprites and balance.
+Implementation branch: `codex/rare-monster-variants`. Draft pull request target: `main`. See `docs/pull-request.md` for the milestone description.

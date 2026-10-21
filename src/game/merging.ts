@@ -9,16 +9,21 @@ export function canMerge(a: number, b: number): boolean {
   return a === b && mergePoints(a) > 0
 }
 
-export interface MergePlan { first: number; second: number; level: number; points: number }
+export interface MergePlan { first: number; second: number; level: number; points: number; rare: boolean }
 
 // Reserve bodies immediately; the scene mutates Matter after its update.
 // Reversed, stale, and shared-body pairs cannot consume a creature twice.
 export class MergeQueue {
   private levels = new Map<number, number>()
+  private rares = new Set<number>()
   private reserved = new Set<number>()
   private pending: MergePlan[] = []
 
-  register(id: number, level: number): void { this.levels.set(id, level) }
+  register(id: number, level: number, rare = false): void {
+    this.levels.set(id, level)
+    if (rare) this.rares.add(id)
+    else this.rares.delete(id)
+  }
 
   queue(first: number, second: number): void {
     if (first === second || this.reserved.has(first) || this.reserved.has(second)) return
@@ -27,7 +32,7 @@ export class MergeQueue {
     if (a === undefined || b === undefined || !canMerge(a, b)) return
     this.reserved.add(first)
     this.reserved.add(second)
-    this.pending.push({ first, second, level: a + 1, points: mergePoints(a) })
+    this.pending.push({ first, second, level: a + 1, points: mergePoints(a), rare: this.rares.has(first) || this.rares.has(second) })
   }
 
   drain(): MergePlan[] {
@@ -36,6 +41,8 @@ export class MergeQueue {
     for (const { first, second } of plans) {
       this.levels.delete(first)
       this.levels.delete(second)
+      this.rares.delete(first)
+      this.rares.delete(second)
     }
     this.reserved.clear()
     return plans

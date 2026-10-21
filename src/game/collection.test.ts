@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { ACHIEVEMENTS, COLLECTION_KEY, discover, emptyCollection, loadCollection, saveCollection } from './collection'
 import { MONSTERS } from './monsters'
 import { Session } from './session'
+import { BEST_SCORE_KEY, loadBestScore } from './scoring'
+import { GameBridge } from './events'
 
 function storage(raw: string | null = null) {
   const values = new Map<string, string>(raw === null ? [] : [[COLLECTION_KEY, raw]])
@@ -53,13 +55,13 @@ describe('persistent collection', () => {
     expect(loadCollection(store)).toEqual(save)
   })
 
-  it.each(['{broken', 'null', '42', '[]', '{}', '{"version":2,"discovered":["sprout"],"achievements":[]}', '{"version":1,"discovered":"all","achievements":[]}', '{"version":1,"discovered":[],"achievements":null}'])('recovers from malformed or unsupported data: %s', (raw) => {
+  it.each(['{broken', 'null', '42', '[]', '{}', '{"version":99,"discovered":["sprout"],"achievements":[]}', '{"version":1,"discovered":"all","achievements":[]}', '{"version":1,"discovered":[],"achievements":null}'])('recovers from malformed or unsupported data: %s', (raw) => {
     expect(loadCollection(storage(raw))).toEqual(emptyCollection())
   })
 
-  it('filters unknown and duplicate keys and recalculates threshold achievements', () => {
+  it('filters unknown and duplicate keys and preserves earned achievements', () => {
     const raw = JSON.stringify({ version: 1, discovered: ['sprout', 'sprout', 'unknown', null, 1], achievements: ['complete', 'five-monsters', 'first-evolution', 'first-evolution', 'unknown'] })
-    expect(loadCollection(storage(raw))).toEqual({ version: 1, discovered: ['sprout'], achievements: ['first-evolution'] })
+    expect(loadCollection(storage(raw))).toEqual({ version: 2, discovered: ['sprout'], rareDiscovered: [], achievements: ['first-evolution', 'five-monsters', 'complete'] })
     const all = loadCollection(storage(JSON.stringify({ version: 1, discovered: MONSTERS.map((m) => m.key), achievements: [] })))
     expect(all.achievements).toEqual(['five-monsters', 'complete'])
   })
@@ -81,5 +83,87 @@ describe('persistent collection', () => {
     expect(restarted.state).toBe('playing')
     expect(loadCollection(store)).toEqual(save)
     expect(discover(loadCollection(store), 1, 'merge').unlocked).toBe(false)
+  })
+})
+
+describe('rare collection migration and persistence', () => {
+  it('migrates the full v1 journal without losing any normal discoveries, achievements or best score', () => {
+    const old = { version: 1, discovered: MONSTERS.map((m) => m.key), achievements: ACHIEVEMENTS.map((a) => a.id) }
+    const store = storage(JSON.stringify(old))
+    store.setItem(BEST_SCORE_KEY, '4560')
+    const migrated = loadCollection(store)
+    expect(migrated).toEqual({ ...old, version: 2, rareDiscovered: [] })
+    expect(saveCollection(store, migrated)).toBe(true)
+    expect(loadCollection(store)).toEqual(migrated)
+    expect(loadBestScore(store)).toBe(4560)
+  })
+
+  it.each([undefined, null, 'all', 42, {}, ['sprout', 'sprout', 'unknown', null, 1]])('recovers damaged rare data independently: %s', (rareDiscovered) => {
+    const store = storage(JSON.stringify({ version: 2, discovered: ['ember'], achievements: ['first-evolution'], rareDiscovered }))
+    const save = loadCollection(store)
+    expect(save.discovered).toEqual(['ember'])
+    expect(save.achievements).toEqual(['first-evolution'])
+    expect(save.rareDiscovered).toEqual(Array.isArray(rareDiscovered) ? ['sprout'] : [])
+  })
+
+  it('preserves discoveries when the old achievement field is damaged', () => {
+    expect(loadCollection(storage(JSON.stringify({ version: 1, discovered: ['sprout'], achievements: null })))).toEqual({
+      version: 2, discovered: ['sprout'], rareDiscovered: [], achievements: [],
+    })
+  })
+
+  it('tracks both palettes separately while counting species once for existing achievements', () => {
+    let save = emptyCollection()
+    for (let level = 0; level < 4; level++) {
+      save = discover(save, level, 'drop').save
+      save = discover(save, level, 'drop', true).save
+    }
+    expect(save.achievements).toEqual([])
+    save = discover(save, 4, 'merge', true).save
+    expect(save.achievements).toEqual(['first-evolution', 'five-monsters'])
+    for (let level = 5; level < 10; level++) save = discover(save, level, 'merge', true).save
+    expect(save.discovered).toHaveLength(4)
+    expect(save.rareDiscovered).toHaveLength(10)
+    expect(save.achievements).toContain('complete')
+  })
+
+  it('deduplicates rapid bridge events per palette and preserves notification order through chain reactions', () => {
+    const bridge = new GameBridge()
+    let save = emptyCollection()
+    const notices: { level: number; rare: boolean }[] = []
+    bridge.on('appeared', ({ level, source, rare }) => {
+      const result = discover(save, level, source, rare)
+      save = result.save
+      if (result.unlocked) notices.push({ level, rare })
+    })
+    for (let level = 0; level < 10; level++) {
+      for (let repeat = 0; repeat < 100; repeat++) {
+        bridge.emit('appeared', { level, source: 'merge', rare: true })
+        bridge.emit('appeared', { level, source: 'merge', rare: false })
+      }
+    }
+    expect(notices).toEqual(MONSTERS.flatMap((_, level) => [{ level, rare: true }, { level, rare: false }]))
+    expect(save.rareDiscovered).toHaveLength(10)
+    expect(save.discovered).toHaveLength(10)
+    expect(save.achievements).toHaveLength(3)
+  })
+
+  it('retains rare discoveries, achievements and best score through restart and repeated refreshes', () => {
+    const store = storage()
+    let save = discover(discover(emptyCollection(), 1, 'drop').save, 1, 'merge', true).save
+    store.setItem(BEST_SCORE_KEY, '1000')
+    for (let run = 0; run < 3; run++) {
+      saveCollection(store, save)
+      const session = new Session()
+      session.tick(3000, true)
+      expect(session.state).toBe('over')
+      expect(new Session().state).toBe('playing')
+      save = loadCollection(store)
+      expect(save.rareDiscovered).toEqual(['ember'])
+      expect(save.discovered).toEqual(['ember'])
+      expect(save.achievements).toEqual(['first-evolution'])
+      expect(discover(save, 1, 'merge', true)).toEqual({ save, unlocked: false })
+      expect(loadBestScore(store)).toBe(1000)
+    }
   })
 })

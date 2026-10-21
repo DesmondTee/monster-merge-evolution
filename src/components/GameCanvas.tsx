@@ -16,15 +16,18 @@ export function GameCanvas() {
   })
   const collectionRef = useRef(collection)
   const [encyclopediaOpen, setEncyclopediaOpen] = useState(false)
-  const [notices, setNotices] = useState<number[]>([])
+  const [notices, setNotices] = useState<{ level: number; rare: boolean }[]>([])
   const dismissNotice = useCallback(() => setNotices((queue) => queue.slice(1)), [])
-  useEffect(() => bridge.on('appeared', ({ level, source }) => {
-    const result = discover(collectionRef.current, level, source)
+  useEffect(() => {
+    try { saveCollection(window.localStorage, collectionRef.current) } catch { /* Storage may be blocked. */ }
+  }, [])
+  useEffect(() => bridge.on('appeared', ({ level, source, rare }) => {
+    const result = discover(collectionRef.current, level, source, rare)
     if (result.save === collectionRef.current) return
     collectionRef.current = result.save
     setCollection(result.save)
     try { saveCollection(window.localStorage, result.save) } catch { /* Keep the in-memory collection. */ }
-    if (result.unlocked) setNotices((queue) => [...queue, level])
+    if (result.unlocked) setNotices((queue) => [...queue, { level, rare }])
   }), [bridge])
   const closeEncyclopedia = () => {
     bridge.emit('encyclopedia', false)
@@ -93,7 +96,7 @@ export function GameCanvas() {
     </p>
     <div className="discovery-slot">
       {notices[0] !== undefined && !encyclopediaOpen
-        ? <DiscoveryNotice level={notices[0]} onDismiss={dismissNotice} />
+        ? <DiscoveryNotice key={`${notices[0].level}-${notices[0].rare}`} {...notices[0]} onDismiss={dismissNotice} />
         : <p className="discovery-hint">DROP · MERGE · DISCOVER</p>}
     </div>
     <div className="playfield">
