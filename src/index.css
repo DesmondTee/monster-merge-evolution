@@ -2,6 +2,20 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background: radial-gradient(ellipse at 50% 30%, #253b3e 0, #101f27 70%); }
 button { font: inherit; }
+button { min-height: 44px; border: 1px solid #4b6759; background: #284137; color: #dce8c6; cursor: pointer; padding: 8px 12px; touch-action: manipulation; }
+button:hover { background: #365444; }
+button:focus-visible { outline: 3px solid #eed294; outline-offset: 3px; }
+button:disabled { opacity: 0.45; cursor: default; }
+.game-toolbar { display: flex; gap: 8px; }
+.game-toolbar button { flex: 1; font: 11px monospace; }
+.game-warning { min-height: 28px; margin: 8px 0; display: grid; place-items: center; text-align: center; font: 9px monospace; color: #b3cf91; }
+.game-warning.overflow { background: #533333; color: #ffcf9c; border: 1px solid #e8a58b; }
+.playfield { position: relative; }
+.game-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: #101f27d9; padding: 20px; }
+.overlay-card { width: 100%; padding: 22px; background: #1d353b; border: 2px solid #a5b99b; box-shadow: 5px 5px 0 #0a171d; text-align: center; }
+.overlay-card h2 { font: bold 27px monospace; color: #eed294; }
+.overlay-card p { display: flex; justify-content: space-between; gap: 8px; font: 12px monospace; }
+.overlay-card button { width: 100%; margin-top: 14px; }
 .arcade { max-width: 1240px; margin: auto; padding: 48px 40px 24px; display: grid; grid-template-columns: 1fr 384px 1fr; align-items: center; gap: 40px; min-height: 100vh; }
 .eyebrow, .milestone, .panel-heading, .controls, footer, .coming-next { font-family: monospace; font-size: 10px; letter-spacing: 1.5px; line-height: 1.8; }
 .eyebrow { color: #b3cf91; }

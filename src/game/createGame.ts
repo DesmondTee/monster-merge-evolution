@@ -1,8 +1,9 @@
 import Phaser from 'phaser'
 import { GameScene } from './scenes/GameScene'
 import { GAME } from './rules'
+import type { SessionView } from './session'
 
-export function createGame(parent: HTMLElement, onScore: (score: number) => void): Phaser.Game {
+export function createGame(parent: HTMLElement, onScore: (score: number) => void, onView: (view: SessionView) => void): Phaser.Game {
   return new Phaser.Game({
     type: Phaser.AUTO, parent, width: GAME.width, height: GAME.height,
     backgroundColor: '#172b35', pixelArt: true, antialias: false,
@@ -11,6 +12,6 @@ export function createGame(parent: HTMLElement, onScore: (score: number) => void
       default: 'matter',
       matter: { gravity: { x: 0, y: 1.2 }, enableSleeping: true, debug: false },
     },
-    scene: [new GameScene(onScore)],
+    scene: [new GameScene(onScore, onView)],
   })
 }
