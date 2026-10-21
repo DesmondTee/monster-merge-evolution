@@ -1,11 +1,35 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type Phaser from 'phaser'
+import { Encyclopedia } from './Encyclopedia'
+import { DiscoveryNotice } from './DiscoveryNotice'
+import { GameBridge } from '../game/events'
+import { discover, emptyCollection, loadCollection, saveCollection } from '../game/collection'
 import { ScoreBoard } from './ScoreBoard'
 import { loadBestScore, saveBestScore } from '../game/scoring'
 import type { SessionView } from '../game/session'
 import { MONSTERS } from '../game/monsters'
 
 export function GameCanvas() {
+  const [bridge] = useState(() => new GameBridge())
+  const [collection, setCollection] = useState(() => {
+    try { return loadCollection(window.localStorage) } catch { return emptyCollection() }
+  })
+  const collectionRef = useRef(collection)
+  const [encyclopediaOpen, setEncyclopediaOpen] = useState(false)
+  const [notices, setNotices] = useState<number[]>([])
+  const dismissNotice = useCallback(() => setNotices((queue) => queue.slice(1)), [])
+  useEffect(() => bridge.on('appeared', ({ level, source }) => {
+    const result = discover(collectionRef.current, level, source)
+    if (result.save === collectionRef.current) return
+    collectionRef.current = result.save
+    setCollection(result.save)
+    try { saveCollection(window.localStorage, result.save) } catch { /* Keep the in-memory collection. */ }
+    if (result.unlocked) setNotices((queue) => [...queue, level])
+  }), [bridge])
+  const closeEncyclopedia = () => {
+    bridge.emit('encyclopedia', false)
+    setEncyclopediaOpen(false)
+  }
   const hostRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef<Phaser.Game | null>(null)
   const [session, setSession] = useState(0)
@@ -31,7 +55,7 @@ export function GameCanvas() {
           setBest(value)
           try { saveBestScore(window.localStorage, value) } catch { /* Storage access can be blocked. */ }
         }
-      }, (value) => { if (!cancelled) setView(value) })
+      }, (value) => { if (!cancelled) setView(value) }, bridge)
       gameRef.current.registry.set('soundEnabled', soundRef.current)
     }).catch(() => { if (!cancelled) setError(true) })
     return () => {
@@ -43,7 +67,7 @@ export function GameCanvas() {
       game?.canvas?.remove()
       game?.destroy(true)
     }
-  }, [session])
+  }, [session, bridge])
 
   const restart = () => {
     setError(false)
@@ -53,8 +77,10 @@ export function GameCanvas() {
   }
 
   return <>
+    {encyclopediaOpen && <Encyclopedia collection={collection} onClose={closeEncyclopedia} />}
     <ScoreBoard score={score} best={best} />
     <div className="game-toolbar">
+      <button onClick={() => { bridge.emit('encyclopedia', true); setEncyclopediaOpen(true) }}>Encyclopedia {collection.discovered.length}/10</button>
       <button disabled={view.state === 'over'} onClick={() => gameRef.current?.events.emit('toggle-pause')}>{view.state === 'paused' ? '▶ Resume' : 'Ⅱ Pause'}</button>
       <button aria-pressed={sound} onClick={() => {
         soundRef.current = !soundRef.current
@@ -65,9 +91,14 @@ export function GameCanvas() {
     <p className={`game-warning ${view.remaining ? 'overflow' : ''}`} role="status" aria-live="polite">
       {view.state === 'over' ? 'HATCHERY FULL' : view.state === 'paused' ? 'TAKE A BREATHER' : view.remaining ? `OVERFLOW · CLEAR THE LINE IN ${view.remaining}s` : `UP NEXT: ${MONSTERS[view.nextLevel]!.name.toUpperCase()} · KEEP BELOW THE LINE`}
     </p>
+    <div className="discovery-slot">
+      {notices[0] !== undefined && !encyclopediaOpen
+        ? <DiscoveryNotice level={notices[0]} onDismiss={dismissNotice} />
+        : <p className="discovery-hint">DROP · MERGE · DISCOVER</p>}
+    </div>
     <div className="playfield">
       <div ref={hostRef} className="game-canvas" role="img" aria-label="Monster merging playground. Aim and drop with mouse or touch. Matching monsters evolve and earn points." />
-      {view.state !== 'playing' && <div className="game-overlay">
+      {!encyclopediaOpen && view.state !== 'playing' && <div className="game-overlay">
         <section role="dialog" aria-modal="false" aria-labelledby="overlay-title" className="overlay-card">
           <p className="eyebrow">THE HATCHERY</p>
           <h2 id="overlay-title">{view.state === 'over' ? 'Game Over' : 'Paused'}</h2>
