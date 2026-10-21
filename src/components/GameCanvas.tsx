@@ -78,7 +78,6 @@ export function GameCanvas() {
 
   return <>
     {encyclopediaOpen && <Encyclopedia collection={collection} onClose={closeEncyclopedia} />}
-    {notices[0] !== undefined && !encyclopediaOpen && <DiscoveryNotice level={notices[0]} onDismiss={dismissNotice} />}
     <ScoreBoard score={score} best={best} />
     <div className="game-toolbar">
       <button onClick={() => { bridge.emit('encyclopedia', true); setEncyclopediaOpen(true) }}>Encyclopedia {collection.discovered.length}/10</button>
@@ -92,6 +91,11 @@ export function GameCanvas() {
     <p className={`game-warning ${view.remaining ? 'overflow' : ''}`} role="status" aria-live="polite">
       {view.state === 'over' ? 'HATCHERY FULL' : view.state === 'paused' ? 'TAKE A BREATHER' : view.remaining ? `OVERFLOW · CLEAR THE LINE IN ${view.remaining}s` : `UP NEXT: ${MONSTERS[view.nextLevel]!.name.toUpperCase()} · KEEP BELOW THE LINE`}
     </p>
+    <div className="discovery-slot">
+      {notices[0] !== undefined && !encyclopediaOpen
+        ? <DiscoveryNotice level={notices[0]} onDismiss={dismissNotice} />
+        : <p className="discovery-hint">DROP · MERGE · DISCOVER</p>}
+    </div>
     <div className="playfield">
       <div ref={hostRef} className="game-canvas" role="img" aria-label="Monster merging playground. Aim and drop with mouse or touch. Matching monsters evolve and earn points." />
       {!encyclopediaOpen && view.state !== 'playing' && <div className="game-overlay">

@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { MONSTERS } from '../game/monsters'
 import { ACHIEVEMENTS, type CollectionSave } from '../game/collection'
 import { MonsterSprite } from './MonsterSprite'
+import { lockPageScroll } from './lockPageScroll'
 
 export function Encyclopedia({ collection, onClose }: { collection: CollectionSave; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [selected, setSelected] = useState(() => MONSTERS.findIndex((m) => collection.discovered.includes(m.key)))
   useEffect(() => {
     const element = dialog.current!
+    const unlockScroll = lockPageScroll(window, document.documentElement, document.body)
     element.showModal()
-    return () => element.close()
+    return () => { element.close(); unlockScroll() }
   }, [])
   const monster = MONSTERS[selected]
   return <dialog ref={dialog} className="encyclopedia" aria-labelledby="encyclopedia-title" onCancel={(event) => { event.preventDefault(); onClose() }}>
