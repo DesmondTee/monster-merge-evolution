@@ -60,8 +60,8 @@ describe('merging and scoring rules', () => {
       queue.queue(3, 4)
     }
     expect(queue.drain()).toEqual([
-      { first: 1, second: 2, level: 1, points: 10 },
-      { first: 3, second: 4, level: 1, points: 10 },
+      { first: 1, second: 2, level: 1, points: 10, rare: false },
+      { first: 3, second: 4, level: 1, points: 10, rare: false },
     ])
     queue.queue(1, 2)
     expect(queue.drain()).toEqual([])

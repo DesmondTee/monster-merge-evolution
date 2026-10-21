@@ -1,11 +1,11 @@
 import { EventEmitter } from 'node:events'
 import type Phaser from 'phaser'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { GameScene } from './GameScene'
 import { GameBridge } from '../events'
 import { discover, emptyCollection } from '../collection'
 import type { SessionView } from '../session'
-import { CONTAINER, DROP_COOLDOWN_MS } from '../rules'
+import { CONTAINER, DROP_COOLDOWN_MS, DROP_Y } from '../rules'
 
 vi.mock('phaser', () => ({ default: {
   Scene: class {}, Scenes: { Events: { SHUTDOWN: 'shutdown', DESTROY: 'destroy' } },
@@ -33,6 +33,9 @@ class Bus {
   count(name: string): number { return this.emitter.listenerCount(name) }
 }
 
+beforeEach(() => { vi.spyOn(Math, 'random').mockReturnValue(0.5) })
+afterEach(() => { vi.restoreAllMocks() })
+
 function harness() {
   const scores: number[] = []
   const views: SessionView[] = []
@@ -42,7 +45,7 @@ function harness() {
   const pause = vi.fn(), resume = vi.fn()
   let id = 0
   const graphic = {
-    setAlpha: () => graphic, setOrigin: () => graphic, setPosition: () => graphic,
+    setDepth: () => graphic, setAlpha: () => graphic, setOrigin: () => graphic, setPosition: () => graphic,
     setTexture: () => graphic, setDisplaySize: () => graphic, setText: () => graphic,
     setVisible: () => graphic, clear: () => graphic, lineStyle: () => graphic, lineBetween: () => graphic,
   }
@@ -163,6 +166,31 @@ describe('scene lifecycle and pointer integration', () => {
 })
 
 describe('discovery bridge and encyclopedia integration', () => {
+  it('rolls once per accepted drop and never rerolls inherited rarity during merges', () => {
+    const game = harness()
+    const appearances = vi.fn()
+    game.bridge.on('appeared', appearances)
+    game.scene.create()
+    const random = vi.mocked(Math.random).mockReturnValue(0.019)
+    random.mockClear()
+    game.input.emit('pointerdown', { x: 180, y: 300 })
+    game.input.emit('pointerdown', { x: 180, y: 300 })
+    expect(random).toHaveBeenCalledOnce()
+    expect(appearances).toHaveBeenLastCalledWith({ level: 0, source: 'drop', rare: true })
+    expect(game.image.mock.calls[0]).toEqual([180, DROP_Y, 'sprout-rare'])
+    game.scene['spawnMonster'](180, 300, 0, 'drop', false)
+    const ids = [...game.scene['monsters'].keys()]
+    game.world.emit('collisionstart', { pairs: [{ bodyA: { id: ids[0] }, bodyB: { id: ids[1] } }] })
+    random.mockClear()
+    game.world.emit('afterupdate')
+    expect(random).not.toHaveBeenCalled()
+    expect(appearances).toHaveBeenLastCalledWith({ level: 1, source: 'merge', rare: true })
+    expect(game.scene['rareBodies'].size).toBe(1)
+    expect(game.scores.at(-1)).toBe(10)
+    game.lifecycle.emit('shutdown')
+    expect(game.scene['rareBodies'].size).toBe(0)
+  })
+
   it('emits appearances only for actual drops and merges, never texture generation or previews', () => {
     const game = harness()
     const appearances = vi.fn()
@@ -170,13 +198,13 @@ describe('discovery bridge and encyclopedia integration', () => {
     game.scene.create()
     expect(appearances).not.toHaveBeenCalled()
     game.input.emit('pointerdown', { x: 180, y: 300 })
-    expect(appearances).toHaveBeenLastCalledWith({ level: 0, source: 'drop' })
+    expect(appearances).toHaveBeenLastCalledWith({ level: 0, source: 'drop', rare: false })
     game.scene['spawnMonster'](180, 300, 0)
     const ids = [...game.scene['monsters'].keys()]
     game.world.emit('collisionstart', { pairs: [{ bodyA: { id: ids[0] }, bodyB: { id: ids[1] } }] })
     expect(appearances).toHaveBeenCalledTimes(2)
     game.world.emit('afterupdate')
-    expect(appearances).toHaveBeenLastCalledWith({ level: 1, source: 'merge' })
+    expect(appearances).toHaveBeenLastCalledWith({ level: 1, source: 'merge', rare: false })
     expect(appearances).toHaveBeenCalledTimes(3)
     game.world.emit('afterupdate')
     expect(appearances).toHaveBeenCalledTimes(3)

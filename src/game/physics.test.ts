@@ -48,13 +48,30 @@ function harness() {
   Events.on(engine, 'afterUpdate', () => scene['applyMerges']())
   return {
     scene, scores, destroyed,
-    spawn: (x: number, y: number, level: number) => scene['spawnMonster'](x, y, level),
+    spawn: (x: number, y: number, level: number, rare = false) => scene['spawnMonster'](x, y, level, 'drop', rare),
     step: () => Engine.update(engine, 1000 / 60),
     bodies: () => Composite.allBodies(world),
   }
 }
 
 describe('scene integration with bundled Matter.js', () => {
+  it('keeps rare and normal physics identical and merges mixed palettes through real Matter contacts', () => {
+    const game = harness()
+    game.spawn(180, 300, 0, true)
+    game.spawn(180, 300, 0)
+    const [rare, normal] = game.bodies()
+    for (const field of ['circleRadius', 'mass', 'friction', 'frictionAir', 'restitution', 'inertia'] as const) {
+      expect(rare![field]).toBe(normal![field])
+    }
+    game.spawn(180, 300, 1)
+    game.step()
+    game.step()
+    expect(game.bodies()).toHaveLength(1)
+    expect(game.bodies()[0]!.circleRadius).toBe(MONSTERS[2].radius)
+    expect(game.scene['rareBodies']).toEqual(new Set([game.bodies()[0]!.id]))
+    expect(game.scores).toEqual([10, 30])
+  })
+
   it('removes two colliders, spawns once at their midpoint with correct size, and chains on the next step', () => {
     const game = harness()
     game.spawn(180, 300, 0)

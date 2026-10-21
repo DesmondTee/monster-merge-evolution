@@ -62,6 +62,14 @@ footer span { margin: 0 14px; color: #c9ad78; }
 .monster-grid button:disabled { opacity: 1; background: #1a3039; color: #9eb4af; border-color: #354b4c; }
 .monster-number { align-self: start; margin-left: 6px; font-size: 9px; color: #9eb4af; }
 .monster-sprite { object-fit: contain; image-rendering: pixelated; flex-shrink: 0; }
+.rare-sprite { filter: drop-shadow(0 0 3px #e2b2ed66); }
+.variant-toggle { display: flex; gap: 8px; margin-bottom: 12px; }
+.variant-toggle button { flex: 1; font: 12px monospace; }
+.variant-toggle button[aria-pressed=true] { border-color: #e2b2ed; background: #493c5c; }
+.rare-badge { font: 8px monospace; color: #f0c8ff; margin-top: 6px; }
+.rare-notice { border-color: #e2b2ed; background: #342f49; }
+.rare-notice p { color: #f0c8ff; }
+.achievement-help { font-size: 12px; color: #9eb4af; }
 .monster-detail { display: flex; align-items: center; gap: 18px; margin-top: 20px; padding: 16px; background: #213943; min-height: 155px; }
 .monster-detail h3 { margin: 0; color: #eed294; }
 .monster-detail p { font-size: 13px; line-height: 1.6; }
