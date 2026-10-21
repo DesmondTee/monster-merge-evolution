@@ -116,4 +116,24 @@ describe('scene integration with bundled Matter.js', () => {
     expect(game.scores).toEqual([10, 30])
     expect(game.bodies()).toHaveLength(1)
   })
+
+  it('keeps a 64-body chain finite and contained through six generations and prolonged settling', () => {
+    const game = harness()
+    for (let i = 0; i < 64; i++) game.spawn(180, 300, 0)
+    for (let wave = 0; wave < 6; wave++) {
+      for (const body of game.bodies()) Body.setPosition(body, { x: 180, y: 300 })
+      game.step()
+    }
+    expect(game.bodies()).toHaveLength(1)
+    expect(game.scores.at(-1)).toBe(1920)
+    expect(new Set(game.destroyed).size).toBe(126)
+    for (let step = 0; step < 600; step++) game.step()
+    for (const body of game.bodies()) {
+      expect(Number.isFinite(body.position.x)).toBe(true)
+      expect(Number.isFinite(body.position.y)).toBe(true)
+      expect(body.position.x - body.circleRadius!).toBeGreaterThanOrEqual(26)
+      expect(body.position.x + body.circleRadius!).toBeLessThanOrEqual(334)
+    }
+    expect(game.scores.at(-1)).toBe(1920)
+  })
 })
