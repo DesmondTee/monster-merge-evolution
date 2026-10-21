@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { GameBridge } from '../events'
 import { createMonsterTextures } from '../art/createMonsterTextures'
 import { evolutionEffect } from '../art/evolutionEffect'
 import { DROP_LEVELS, MONSTERS } from '../monsters'
@@ -8,6 +9,8 @@ import { GameSound } from '../sound'
 import { CONTAINER, DANGER_Y, DROP_Y, GAME, MAX_MONSTERS, clampDropX } from '../rules'
 
 export class GameScene extends Phaser.Scene {
+  private bridge: GameBridge
+  private unsubscribeEncyclopedia?: () => void
   private nextLevel = 0
   private preview!: Phaser.GameObjects.Image
   private guide!: Phaser.GameObjects.Graphics
@@ -25,8 +28,9 @@ export class GameScene extends Phaser.Scene {
 
   private readonly onView: (view: SessionView) => void
 
-  constructor(onScore: (score: number) => void = () => {}, onView: (view: SessionView) => void = () => {}) {
+  constructor(onScore: (score: number) => void = () => {}, onView: (view: SessionView) => void = () => {}, bridge = new GameBridge()) {
     super('GameScene')
+    this.bridge = bridge
     this.onScore = onScore
     this.onView = onView
   }
@@ -53,6 +57,13 @@ export class GameScene extends Phaser.Scene {
     this.aim(180)
     this.add.text(290, 47, 'NEXT', { fontFamily: 'monospace', fontSize: '9px', color: '#c0d5bc' }).setOrigin(0.5)
     this.queuedPreview = this.add.image(290, 77, MONSTERS[this.queuedLevel]!.key).setDisplaySize(32, 32)
+    this.unsubscribeEncyclopedia = this.bridge.on('encyclopedia', (open) => {
+      this.session.setEncyclopedia(open)
+      this.syncPhysics()
+      this.publishView()
+    })
+    this.session.setEncyclopedia(this.bridge.encyclopediaOpen)
+    if (this.bridge.encyclopediaOpen) this.syncPhysics()
     this.publishView()
     this.game.events.on('toggle-pause', this.togglePause, this)
     this.game.events.on('toggle-sound', this.toggleSound, this)
@@ -67,6 +78,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    this.unsubscribeEncyclopedia?.()
+    this.unsubscribeEncyclopedia = undefined
     this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.cleanup, this)
     this.events.off(Phaser.Scenes.Events.DESTROY, this.cleanup, this)
     this.input.off('pointermove', this.onPointerMove, this)
@@ -89,7 +102,7 @@ export class GameScene extends Phaser.Scene {
     this.game.registry.set('soundEnabled', this.tones.enabled)
   }
 
-  private onBlur(): void { if (this.session.state === 'playing') this.togglePause() }
+  private onBlur(): void { this.session.pause(); this.syncPhysics(); this.publishView() }
 
   private togglePause(): void {
     this.session.togglePause()
@@ -158,7 +171,7 @@ export class GameScene extends Phaser.Scene {
     this.updateStatus()
   }
 
-  private spawnMonster(x: number, y: number, level: number): number {
+  private spawnMonster(x: number, y: number, level: number, source: 'drop' | 'merge' = 'drop'): number {
     const monster = MONSTERS[level]!
     const image = this.matter.add.image(clampDropX(x, monster.radius), Math.min(y, CONTAINER.floor - monster.radius), monster.key)
     image.setCircle(24).setDisplaySize(monster.radius * 2, monster.radius * 2)
@@ -166,6 +179,7 @@ export class GameScene extends Phaser.Scene {
     const id = (image.body as MatterJS.BodyType).id
     this.monsters.set(id, image)
     this.merges.register(id, level)
+    this.bridge.emit('appeared', { level, source })
     return id
   }
 
@@ -188,7 +202,7 @@ export class GameScene extends Phaser.Scene {
       this.overflow.remove(plan.second)
       first.destroy()
       second.destroy()
-      this.spawnMonster(x, y, plan.level)
+      this.spawnMonster(x, y, plan.level, 'merge')
       this.score += plan.points
       this.onScore(this.score)
       this.tones.play('merge')

@@ -5,7 +5,11 @@ export interface SessionView { state: PlayState; remaining: number; nextLevel: n
 export const OVERFLOW_MS = 3000
 
 export class Session {
-  state: PlayState = 'playing'
+  private playState: PlayState = 'playing'
+  private encyclopediaOpen = false
+  get state(): PlayState { return this.playState === 'playing' && this.encyclopediaOpen ? 'paused' : this.playState }
+  setEncyclopedia(open: boolean): void { this.encyclopediaOpen = open }
+  pause(): void { if (this.playState === 'playing') this.playState = 'paused' }
   elapsed = 0
   private cooldown = 0
 
@@ -13,7 +17,7 @@ export class Session {
     if (this.state !== 'playing') return
     this.cooldown = Math.max(0, this.cooldown - delta)
     this.elapsed = overflowing ? this.elapsed + delta : 0
-    if (this.elapsed >= OVERFLOW_MS) this.state = 'over'
+    if (this.elapsed >= OVERFLOW_MS) this.playState = 'over'
   }
 
   drop(): boolean {
@@ -25,7 +29,7 @@ export class Session {
   get ready(): boolean { return this.state === 'playing' && this.cooldown === 0 }
   get remaining(): number { return this.elapsed > 0 ? Math.max(0, Math.ceil((OVERFLOW_MS - this.elapsed) / 1000)) : 0 }
   togglePause(): void {
-    if (this.state !== 'over') this.state = this.state === 'paused' ? 'playing' : 'paused'
+    if (!this.encyclopediaOpen && this.playState !== 'over') this.playState = this.playState === 'paused' ? 'playing' : 'paused'
   }
 }
 

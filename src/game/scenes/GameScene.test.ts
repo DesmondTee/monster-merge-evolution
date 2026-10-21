@@ -2,6 +2,8 @@ import { EventEmitter } from 'node:events'
 import type Phaser from 'phaser'
 import { describe, expect, it, vi } from 'vitest'
 import { GameScene } from './GameScene'
+import { GameBridge } from '../events'
+import { discover, emptyCollection } from '../collection'
 import type { SessionView } from '../session'
 import { CONTAINER, DROP_COOLDOWN_MS } from '../rules'
 
@@ -10,6 +12,7 @@ vi.mock('phaser', () => ({ default: {
   Utils: { Array: { GetRandom: () => 1 } },
 } }))
 vi.mock('../art/createMonsterTextures', () => ({ createMonsterTextures: vi.fn() }))
+vi.mock('../art/evolutionEffect', () => ({ evolutionEffect: vi.fn() }))
 
 // Phaser emitters bind the third context argument; preserve that contract here.
 class Bus {
@@ -33,7 +36,8 @@ class Bus {
 function harness() {
   const scores: number[] = []
   const views: SessionView[] = []
-  const scene = new GameScene((value) => scores.push(value), (view) => views.push(view))
+  const bridge = new GameBridge()
+  const scene = new GameScene((value) => scores.push(value), (view) => views.push(view), bridge)
   const input = new Bus(), world = new Bus(), commands = new Bus(), lifecycle = new Bus()
   const pause = vi.fn(), resume = vi.fn()
   let id = 0
@@ -45,7 +49,7 @@ function harness() {
   const image = vi.fn((x: number, y: number) => {
     const body = { id: ++id, position: { x, y }, circleRadius: 19, speed: 0 }
     const creature = {
-      body, active: true, x, y, setCircle: () => creature, setDisplaySize: () => creature,
+      destroy: vi.fn(), body, active: true, x, y, setCircle: () => creature, setDisplaySize: () => creature,
       setBounce: () => creature, setFriction: () => creature, setFrictionAir: () => creature,
       setName: () => creature,
     }
@@ -59,7 +63,7 @@ function harness() {
   scene.tweens = { pauseAll: vi.fn(), resumeAll: vi.fn() } as unknown as Phaser.Tweens.TweenManager
   scene['drawHatchery'] = vi.fn()
   scene['createWalls'] = vi.fn()
-  return { scene, input, world, commands, lifecycle, pause, resume, image, scores, views }
+  return { bridge, scene, input, world, commands, lifecycle, pause, resume, image, scores, views }
 }
 
 describe('scene lifecycle and pointer integration', () => {
@@ -155,5 +159,68 @@ describe('scene lifecycle and pointer integration', () => {
     expect(game.commands.count('blur')).toBe(0)
     expect(game.lifecycle.count('shutdown')).toBe(0)
     expect(close).toHaveBeenCalledOnce()
+  })
+})
+
+describe('discovery bridge and encyclopedia integration', () => {
+  it('emits appearances only for actual drops and merges, never texture generation or previews', () => {
+    const game = harness()
+    const appearances = vi.fn()
+    game.bridge.on('appeared', appearances)
+    game.scene.create()
+    expect(appearances).not.toHaveBeenCalled()
+    game.input.emit('pointerdown', { x: 180, y: 300 })
+    expect(appearances).toHaveBeenLastCalledWith({ level: 0, source: 'drop' })
+    game.scene['spawnMonster'](180, 300, 0)
+    const ids = [...game.scene['monsters'].keys()]
+    game.world.emit('collisionstart', { pairs: [{ bodyA: { id: ids[0] }, bodyB: { id: ids[1] } }] })
+    expect(appearances).toHaveBeenCalledTimes(2)
+    game.world.emit('afterupdate')
+    expect(appearances).toHaveBeenLastCalledWith({ level: 1, source: 'merge' })
+    expect(appearances).toHaveBeenCalledTimes(3)
+    game.world.emit('afterupdate')
+    expect(appearances).toHaveBeenCalledTimes(3)
+  })
+
+  it('pauses physics through the typed bridge, blocks input, and cleans subscriptions', () => {
+    const game = harness()
+    game.scene.create()
+    game.bridge.emit('encyclopedia', true)
+    expect(game.pause).toHaveBeenCalledOnce()
+    game.input.emit('pointerdown', { x: 180, y: 300 })
+    game.scene.update(0, 5000)
+    expect(game.image).not.toHaveBeenCalled()
+    game.bridge.emit('encyclopedia', false)
+    expect(game.views.at(-1)?.state).toBe('playing')
+    game.commands.emit('toggle-pause')
+    game.bridge.emit('encyclopedia', true)
+    game.bridge.emit('encyclopedia', false)
+    expect(game.views.at(-1)?.state).toBe('paused')
+    game.lifecycle.emit('shutdown')
+    const count = game.pause.mock.calls.length
+    game.bridge.emit('encyclopedia', true)
+    expect(game.pause).toHaveBeenCalledTimes(count)
+    game.scene.create()
+    expect(game.views.at(-1)?.state).toBe('paused')
+    game.bridge.emit('encyclopedia', false)
+    expect(game.views.at(-1)?.state).toBe('playing')
+  })
+
+  it('retains collection through scene shutdown, restart and duplicate appearances', () => {
+    const game = harness()
+    let collection = emptyCollection()
+    const unlock = vi.fn()
+    game.bridge.on('appeared', ({ level, source }) => {
+      const result = discover(collection, level, source)
+      collection = result.save
+      if (result.unlocked) unlock(level)
+    })
+    for (let i = 0; i < 3; i++) {
+      game.scene.create()
+      game.input.emit('pointerdown', { x: 180, y: 300 })
+      game.lifecycle.emit('shutdown')
+    }
+    expect(collection.discovered).toEqual(['sprout'])
+    expect(unlock).toHaveBeenCalledOnce()
   })
 })
