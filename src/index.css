@@ -14,6 +14,11 @@ h1 span { display: block; color: #b3cf91; }
 .panel-heading span:last-child { color: #abc790; }
 .game-canvas { width: 100%; aspect-ratio: 9 / 16; overflow: hidden; touch-action: none; }
 .game-canvas canvas { display: block; image-rendering: pixelated; }
+.scoreboard { display: flex; justify-content: space-between; gap: 12px; padding: 9px 12px; margin-bottom: 10px; border: 1px solid #425950; background: #1d353b; font-family: monospace; }
+.scoreboard > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.scoreboard > div:last-child { text-align: right; }
+.scoreboard span { color: #9eb4af; font-size: 9px; letter-spacing: 1.5px; }
+.scoreboard strong { color: #dce8c6; font-size: 20px; overflow-wrap: anywhere; }
 .reset-button { width: 100%; border: 1px solid #4b6759; background: #284137; color: #dce8c6; padding: 10px; cursor: pointer; margin-top: 12px; font-size: 12px; }
 .reset-button:hover { background: #365444; }
 .reset-button:focus-visible { outline: 3px solid #eed294; outline-offset: 3px; }

@@ -1,35 +1,53 @@
 import Phaser from 'phaser'
 import { createMonsterTextures } from '../art/createMonsterTextures'
-import { MONSTERS } from '../monsters'
-import type { MonsterDefinition } from '../monsters'
+import { evolutionEffect } from '../art/evolutionEffect'
+import { DROP_LEVELS, MONSTERS } from '../monsters'
+import { MergeQueue } from '../merging'
 import { CONTAINER, DANGER_Y, DROP_COOLDOWN_MS, DROP_Y, GAME, MAX_MONSTERS, clampDropX } from '../rules'
 
 export class GameScene extends Phaser.Scene {
-  private nextMonster: MonsterDefinition = MONSTERS[0]
+  private nextLevel = 0
   private preview!: Phaser.GameObjects.Image
   private guide!: Phaser.GameObjects.Graphics
   private status!: Phaser.GameObjects.Text
   private nextDropAt = 0
-  private count = 0
+  private monsters = new Map<number, Phaser.Physics.Matter.Image>()
+  private merges = new MergeQueue()
+  private score = 0
+  private readonly onScore: (score: number) => void
 
-  constructor() { super('GameScene') }
+  constructor(onScore: (score: number) => void = () => {}) {
+    super('GameScene')
+    this.onScore = onScore
+  }
 
   create(): void {
-    this.count = 0
+    this.monsters.clear()
+    this.merges = new MergeQueue()
+    this.score = 0
+    this.onScore(0)
     this.nextDropAt = 0
-    this.nextMonster = MONSTERS[0]
+    this.nextLevel = 0
     createMonsterTextures(this)
     this.drawHatchery()
     this.createWalls()
     this.guide = this.add.graphics()
-    this.preview = this.add.image(GAME.width / 2, DROP_Y, this.nextMonster.key).setAlpha(0.85)
+    this.preview = this.add.image(GAME.width / 2, DROP_Y, MONSTERS[this.nextLevel]!.key).setAlpha(0.85)
     this.status = this.add.text(180, 620, 'READY FOR YOUR FIRST DROP', { fontFamily: 'monospace', fontSize: '10px', color: '#a5c5ba' }).setOrigin(0.5)
     this.aim(180)
     this.input.on('pointermove', this.onPointerMove, this)
     this.input.on('pointerdown', this.onPointerDown, this)
+    this.matter.world.on('collisionstart', this.onCollision, this)
+    this.matter.world.on('collisionactive', this.onCollision, this)
+    this.matter.world.on('afterupdate', this.applyMerges, this)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.off('pointermove', this.onPointerMove, this)
       this.input.off('pointerdown', this.onPointerDown, this)
+      this.matter.world.off('collisionstart', this.onCollision, this)
+      this.matter.world.off('collisionactive', this.onCollision, this)
+      this.matter.world.off('afterupdate', this.applyMerges, this)
+      this.monsters.clear()
+      this.merges = new MergeQueue()
     })
   }
 
@@ -58,28 +76,63 @@ export class GameScene extends Phaser.Scene {
   }
 
   private aim(x: number): void {
-    const position = clampDropX(x, this.nextMonster.radius)
-    this.preview.setPosition(position, DROP_Y).setTexture(this.nextMonster.key)
-      .setDisplaySize(this.nextMonster.radius * 2, this.nextMonster.radius * 2)
+    const monster = MONSTERS[this.nextLevel]!
+    const position = clampDropX(x, monster.radius)
+    this.preview.setPosition(position, DROP_Y).setTexture(monster.key)
+      .setDisplaySize(monster.radius * 2, monster.radius * 2)
     this.guide.clear().lineStyle(1, 0xc5dfb1, 0.3)
-      .lineBetween(position, DROP_Y + this.nextMonster.radius + 6, position, CONTAINER.floor)
+      .lineBetween(position, DROP_Y + monster.radius + 6, position, CONTAINER.floor)
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void { this.aim(pointer.x) }
 
   private onPointerDown(pointer: Phaser.Input.Pointer): void {
-    if (pointer.x < CONTAINER.left || pointer.x > CONTAINER.right || pointer.y > CONTAINER.floor || this.time.now < this.nextDropAt || this.count >= MAX_MONSTERS) return
-    const monster = this.nextMonster
+    if (pointer.x < CONTAINER.left || pointer.x > CONTAINER.right || pointer.y > CONTAINER.floor || this.time.now < this.nextDropAt || this.monsters.size >= MAX_MONSTERS) return
+    const monster = MONSTERS[this.nextLevel]!
     const x = clampDropX(pointer.x, monster.radius)
-    const body = this.matter.add.image(x, DROP_Y, monster.key)
-    body.setCircle(24).setDisplaySize(monster.radius * 2, monster.radius * 2)
-      .setBounce(0.35).setFriction(0.45).setFrictionAir(0.005)
-    body.setName(monster.key)
-    this.count += 1
+    this.spawnMonster(x, DROP_Y, this.nextLevel)
     this.nextDropAt = this.time.now + DROP_COOLDOWN_MS
-    this.nextMonster = Phaser.Utils.Array.GetRandom([...MONSTERS])
+    this.nextLevel = Phaser.Utils.Array.GetRandom([...DROP_LEVELS])
     this.aim(x)
-    this.status.setText(this.count >= MAX_MONSTERS ? 'SANDBOX FULL · RESET TO PLAY AGAIN' : `${this.count} DROPPED  /  NEXT: ${this.nextMonster.name.toUpperCase()}`)
+    this.updateStatus()
+  }
+
+  private spawnMonster(x: number, y: number, level: number): void {
+    const monster = MONSTERS[level]!
+    const image = this.matter.add.image(x, y, monster.key)
+    image.setCircle(24).setDisplaySize(monster.radius * 2, monster.radius * 2)
+      .setBounce(0.35).setFriction(0.45).setFrictionAir(0.005).setName(monster.key)
+    const id = (image.body as MatterJS.BodyType).id
+    this.monsters.set(id, image)
+    this.merges.register(id, level)
+  }
+
+  private onCollision(event: Phaser.Physics.Matter.Events.CollisionStartEvent): void {
+    for (const { bodyA, bodyB } of event.pairs) this.merges.queue(bodyA.id, bodyB.id)
+  }
+
+  private applyMerges(): void {
+    for (const plan of this.merges.drain()) {
+      const first = this.monsters.get(plan.first)
+      const second = this.monsters.get(plan.second)
+      if (!first?.active || !second?.active) continue
+      const x = (first.x + second.x) / 2
+      const y = (first.y + second.y) / 2
+      this.monsters.delete(plan.first)
+      this.monsters.delete(plan.second)
+      first.destroy()
+      second.destroy()
+      this.spawnMonster(x, y, plan.level)
+      this.score += plan.points
+      this.onScore(this.score)
+      evolutionEffect(this, x, y, MONSTERS[plan.level]!.accent, plan.points)
+    }
+    this.updateStatus()
+  }
+
+  private updateStatus(): void {
+    this.status.setText(this.monsters.size >= MAX_MONSTERS ? 'HATCHERY FULL · RESET TO PLAY AGAIN'
+      : `${this.monsters.size} IN HATCHERY / NEXT: ${MONSTERS[this.nextLevel]!.name.toUpperCase()}`)
   }
 
   update(): void {
